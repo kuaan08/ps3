@@ -61,18 +61,27 @@ MemoryRegion::MapEntry* MemoryRegion::alloc(size_t size, u64 start_addr) {
 }
 
 void MemoryRegion::free(MemoryRegion::MapEntry* entry) {
-    // Get the block this entry is mapped to
-    auto block = findBlockFromAddr(entry->paddr);
-    // Remove block
-    for (int i = 0; i < blocks.size(); i++) {
-        if (blocks[i].start == block.second->start) {
+    if (!entry) return;
+    const u64 vaddr = entry->vaddr;
+    const u64 paddr = entry->paddr;
+    const u64 mapped_size = entry->size;
+
+    // Remove stale fast-memory pointers before the physical block is reused.
+    for (u64 addr = vaddr; addr < vaddr + mapped_size; addr += PAGE_SIZE)
+        mem_manager.markAsSlowMem(addr >> PAGE_SHIFT, true, true);
+
+    auto block = findBlockFromAddr(paddr);
+    if (!block.first)
+        Helpers::panic("Tried to free a non-existing physical block at 0x%016llx\n", paddr);
+    const u64 block_start = block.second->start;
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        if (blocks[i].start == block_start) {
             blocks.erase(blocks.begin() + i);
             break;
         }
     }
-    // Remove map entry
-    for (int i = 0; i < map.size(); i++) {
-        if (map[i].vaddr == entry->vaddr) {
+    for (size_t i = 0; i < map.size(); ++i) {
+        if (map[i].vaddr == vaddr) {
             map.erase(map.begin() + i);
             break;
         }
@@ -205,9 +214,14 @@ MemoryRegion::MapEntry* MemoryRegion::mmap(u64 vaddr, u64 paddr, size_t size) {
 
 // Unmaps the region starting at the given virtual address.
 void MemoryRegion::unmap(u64 vaddr) {
-    for (int i = 0; i < map.size(); i++) {
+    for (size_t i = 0; i < map.size(); ++i) {
         if (map[i].vaddr == vaddr) {
+            // Invalidate the page cache when the guest virtual mapping is
+            // released, including mappings created through mmap().
+            for (u64 addr = vaddr; addr < vaddr + map[i].size; addr += PAGE_SIZE)
+                mem_manager.markAsSlowMem(addr >> PAGE_SHIFT, true, true);
             map.erase(map.begin() + i);
+            return;
         }
     }
 }

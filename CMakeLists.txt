@@ -123,7 +123,12 @@ endif()
 
 
 #target_compile_options(ChonkyStation3 PUBLIC /fsanitize=address)
-set_target_properties(ChonkyStation3 PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+# Keep iterative Xbox port builds fast. Release optimization can be enabled
+# explicitly once correctness and portability are established.
+option(ENABLE_LTO "Enable slower full-program link time optimization" OFF)
+if(ENABLE_LTO)
+    set_target_properties(ChonkyStation3 PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
 
 if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format-nonliteral -Wno-format-security -Wno-invalid-offsetof")

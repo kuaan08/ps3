@@ -1,0 +1,54 @@
+name: Xbox One Fat UWP graphics probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'XboxOneProbe/**'
+      - 'tools/generate-probe-assets.ps1'
+      - '.github/workflows/xbox-one-uwp-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-uwp-x64:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Generate diagnostic package icons
+        shell: pwsh
+        run: ./tools/generate-probe-assets.ps1
+
+      - name: Build native UWP x64 AppContainer project
+        shell: pwsh
+        run: |
+          msbuild XboxOneProbe/XboxOneProbe.vcxproj /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:GenerateAppxPackageOnBuild=true
+
+      - name: Sign experimental UWP package with disposable certificate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=PS3XboxOneProbeDev" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable -NotAfter (Get-Date).AddMonths(3)
+          Export-Certificate -Cert $cert -FilePath "$env:GITHUB_WORKSPACE/XboxOneProbe/PS3XboxOneProbeDev.cer" | Out-Null
+          $tool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool.exe$' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $tool) { throw "signtool.exe not found" }
+          $packages = @(Get-ChildItem "$env:GITHUB_WORKSPACE/XboxOneProbe" -Filter *.appx -Recurse)
+          if ($packages.Count -eq 0) { throw "No .appx was built" }
+          foreach ($appx in $packages) {
+            & $tool.FullName sign /fd SHA256 /sha1 $cert.Thumbprint /s My $appx.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Failed to sign $($appx.FullName)" }
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS3-XboxOne-Fat-UWP-HARDWARE-PROBE-NOT-EMULATOR
+          path: |
+            XboxOneProbe/**/*.appx
+            XboxOneProbe/PS3XboxOneProbeDev.cer
+          if-no-files-found: error

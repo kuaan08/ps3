@@ -2,7 +2,7 @@
 
 An experimental PlayStation 3 emulator port targeting **Xbox One / Xbox One S / Xbox One X in UWP Developer Mode (x64)**.
 
-> **Status: ChonkyStation3 Xbox source imported (upstream commit `5093c7f`, 2025-04-01).** No Xbox One APPX or playable PS3 game has been verified in this repository. This is not a release-ready emulator.
+> **Status: ChonkyStation3 source imported and a separate UWP x64 Direct3D 11 hardware probe successfully compiled and packaged.** The emulator core has **not** been integrated into the Xbox package and no PS3 game has been verified on Xbox One. This is not a release-ready emulator.
 
 ## Upstream
 
@@ -36,3 +36,12 @@ See [docs/TEST-PLAN.md](docs/TEST-PLAN.md) for exit criteria and reporting forma
 ## License and credits
 
 ChonkyStation3 is licensed under the **GNU GPL v3** (see upstream `LICENSE.md`). When importing code, retain its license, full attribution and applicable notices. This project is unofficial, is not affiliated with Sony or Microsoft, and makes no claims of game compatibility before hardware validation.
+
+## Xbox One Fat hardware test package (not the emulator)
+
+A signed **native UWP x64 Direct3D 11 + controller + memory diagnostic APPX** was produced by GitHub Actions. It does **not** run PS3 software.
+
+- [Successful probe build and downloadable APPX + CER artifact](https://github.com/kuaan08/ps3/actions/runs/38499522247)
+- [Probe source, test steps, and trust requirements](XboxOneProbe/README.md)
+
+An actual Xbox One hardware test is still needed. The original OpenGL 4.1 RSX backend has not yet been ported to Direct3D 11, and the desktop Windows emulator DLL cannot simply be copied into the UWP package.

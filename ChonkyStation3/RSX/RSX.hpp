@@ -19,6 +19,15 @@ class RSX {
 public:
     RSX(PlayStation3* ps3);
     void initGL();  // TODO: decouple the OpenGL backend from the RSX core
+#ifdef CHONKYSTATION3_UWP_D3D11
+    // Borrowed from the UWP host. Valid for the lifetime of the guest session.
+    void initD3D11(struct ID3D11DeviceContext* context,
+                   struct ID3D11RenderTargetView* target);
+    void runCommandListD3D11(u64 put_addr = 0);
+    bool d3d11_active = false;
+    ID3D11DeviceContext* d3d11_context = nullptr;
+    ID3D11RenderTargetView* d3d11_target = nullptr;
+#endif
     
     CellGcmSys& gcm;
     VertexShaderDecompiler vertex_shader_decompiler;

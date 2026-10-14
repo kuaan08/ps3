@@ -15,7 +15,7 @@
   </Dependencies>
   <Resources><Resource Language="en-US" /></Resources>
   <Applications>
-    <Application Id="App" Executable="XboxOneProbe.exe" EntryPoint="PS3XboxOneEmulatorExperimental.App">
+    <Application Id="App" Executable="XboxOneHost.exe" EntryPoint="PS3XboxOneEmulatorExperimental.App">
       <uap:VisualElements DisplayName="PS3 Xbox One Emulator Alpha"
            Description="Experimental ChonkyStation3 native core; no game compatibility established"
            BackgroundColor="#092032"

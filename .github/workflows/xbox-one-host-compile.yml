@@ -1,0 +1,34 @@
+name: Xbox One Emulator Host x64 Compile Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'XboxOneHost/**'
+      - 'tools/generate-probe-assets.ps1'
+      - '.github/workflows/xbox-one-host-compile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xbox-uwp-host:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate host assets
+        shell: pwsh
+        run: ./tools/generate-probe-assets.ps1 -OutputDir "$env:GITHUB_WORKSPACE/XboxOneHost/Assets"
+      - name: Compile real emulator host (without DLL dependencies)
+        shell: pwsh
+        run: |
+          msbuild XboxOneHost/XboxOneHost.vcxproj /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
+          if ($LASTEXITCODE -ne 0) { throw "Xbox emulator host C++ compilation failed" }
+      - name: Check UWP host executable
+        shell: pwsh
+        run: |
+          $file = "XboxOneHost/x64/Release/XboxOneHost/XboxOneHost.exe"
+          if (!(Test-Path $file)) { throw "Host executable missing" }
+          Write-Host "Compiled native Xbox UWP host, but emulator DLL requires the complete-package workflow."

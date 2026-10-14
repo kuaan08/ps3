@@ -45,6 +45,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'MakeAppx failed' }
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PS3XboxOneProbeDev' -CertStoreLocation 'Cert:\CurrentUser\My' -NotAfter (Get-Date).AddMonths(3)
           Export-Certificate -Cert $cert -FilePath (Join-Path $folder 'PS3XboxOneProbeDev.cer') | Out-Null
+          # Trust the short-lived test certificate only on this temporary CI runner
+          # so SignTool can verify the package chain. Users must explicitly trust
+          # the exported public cert on their own developer device if required.
+          Import-Certificate -FilePath (Join-Path $folder 'PS3XboxOneProbeDev.cer') -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
           & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $appx
           if ($LASTEXITCODE -ne 0) { throw 'SignTool failed' }
           & $sign verify /pa /v $appx

@@ -6,7 +6,15 @@ GameLoader::GameLoader(PlayStation3* ps3) : ps3(ps3) {
     const auto game_dir = ps3->fs.guestPathToHost("/dev_hdd0/game");
     SFOLoader sfo_loader = SFOLoader(ps3->fs);
 
-    // Register installed games
+    // A fresh Xbox UWP LocalState has no installed games. The old code
+    // threw before the user could see the boot menu.
+    std::error_code scan_error;
+    if (!fs::is_directory(game_dir, scan_error)) {
+        printf("GameLoader: no installed games directory: %s\n", game_dir.string().c_str());
+        return;
+    }
+
+    // Register installed games.
     for (auto& i : fs::directory_iterator(game_dir)) {
         // Sometimes the path will contain weird characters that break .generic_string();
         // Safe to say that if our path contains any of those characters it's not a game.

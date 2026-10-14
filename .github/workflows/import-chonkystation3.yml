@@ -1,0 +1,58 @@
+# One-time, reviewable source import. This workflow does not compile an Xbox package.
+name: Import ChonkyStation3 baseline
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-chonkystation3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.repository == 'kuaan08/ps3'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Merge GPL-3.0 upstream into current source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add chonky-upstream https://github.com/momo-AUX1/ChonkyStation3.git
+          git fetch --no-tags chonky-upstream master
+          PIN=5093c7f52fa90ea373323aaa638810bd3929da16
+          git cat-file -e "${PIN}^{commit}"
+
+          # Unrelated histories because this repository started empty.
+          set +e
+          git merge --allow-unrelated-histories --no-ff --no-commit "$PIN"
+          merge_code=$?
+          set -e
+          if (( merge_code != 0 )); then
+            unresolved="$(git diff --name-only --diff-filter=U)"
+            if [[ "$unresolved" != "README.md" ]]; then
+              echo "Unexpected merge conflicts:" >&2
+              printf '%s\n' "$unresolved" >&2
+              exit 1
+            fi
+            # Retain our Xbox One-specific project introduction.
+            git checkout --ours -- README.md
+            git add README.md
+          fi
+
+          test -f LICENSE.md
+          test -f CMakeLists.txt
+          test -f ChonkyStation3/ChonkyStation3.cpp
+          git diff --quiet --diff-filter=U
+
+          git commit -m "vendor: merge ChonkyStation3 Xbox baseline (5093c7f)"
+          git push origin HEAD:main

@@ -49,6 +49,11 @@ jobs:
             git add README.md
           fi
 
+          # GitHub Actions' token cannot import a third-party workflow without
+          # explicit workflow-writing permission. Keep only our known workflow.
+          git rm -rf --ignore-unmatch -- .github/workflows
+          git restore --source=HEAD --staged --worktree -- .github/workflows
+
           test -f LICENSE.md
           test -f CMakeLists.txt
           test -f ChonkyStation3/ChonkyStation3.cpp

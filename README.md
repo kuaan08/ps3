@@ -2,13 +2,13 @@
 
 An experimental PlayStation 3 emulator port targeting **Xbox One / Xbox One S / Xbox One X in UWP Developer Mode (x64)**.
 
-> **Status: source-integration stage.** No working Xbox One package or playable PS3 game has been verified in this repository. This is not a release-ready emulator.
+> **Status: ChonkyStation3 Xbox source imported (upstream commit `5093c7f`, 2025-04-01).** No Xbox One APPX or playable PS3 game has been verified in this repository. This is not a release-ready emulator.
 
 ## Upstream
 
 Primary experimental baseline: [momo-AUX1/ChonkyStation3](https://github.com/momo-AUX1/ChonkyStation3) (the Xbox UWP-oriented fork of [liuk7071/ChonkyStation3](https://github.com/liuk7071/ChonkyStation3)).
 
-We aim to **import and preserve upstream history**, retain attribution and the GPL-3.0 license, and make Xbox One-specific changes as reviewable commits. [RPCS3](https://github.com/RPCS3/rpcs3) is a technical reference, **not** the source tree imported here.
+Imported baseline from the Xbox-oriented fork with its upstream commit history and GPL-3.0 license, retaining our Xbox One-specific project documentation. Future changes should remain reviewable commits. [RPCS3](https://github.com/RPCS3/rpcs3) is a technical reference, **not** the source tree imported here.
 
 ## Why this baseline?
 
@@ -16,7 +16,7 @@ The Xbox fork already has an `ENABLE_XBOX_BUILD` option, an SDL2 + ImGui fronten
 
 ## Goals, in order
 
-1. Import the baseline source legally and reproducibly; verify submodules and native desktop build.
+1. **Imported:** baseline source and history. **Next:** verify submodules and native desktop build.
 2. Create / validate an actual x64 UWP host with working window, controller, logs and measured memory budget on Xbox One.
 3. Exercise the PPU/SPU interpreter and run a minimal homebrew ELF **on the console**.
 4. Make the RSX render path compatible with the UWP graphics stack; investigate GLES/ANGLE or an explicit Direct3D backend.

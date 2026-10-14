@@ -1339,7 +1339,9 @@ void PPUInterpreter::lvx(const Instruction& instr) {
 void PPUInterpreter::neg(const Instruction& instr) {
     Helpers::debugAssert(!instr.oe, "neg: oe bit set\n");
 
-    state.gprs[instr.rt] = -state.gprs[instr.ra];
+    // PowerPC NEG is two's-complement modulo 2^64 (including INT64_MIN).
+    // Avoid unary-minus on unsigned, rejected by strict UWP MSVC builds.
+    state.gprs[instr.rt] = u64{0} - state.gprs[instr.ra];
     if (instr.rc)
         state.cr.compareAndUpdateCRField<s64>(0, state.gprs[instr.rt], 0);
 }

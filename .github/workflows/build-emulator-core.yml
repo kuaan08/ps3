@@ -1,0 +1,41 @@
+name: Build experimental Xbox-targeted emulator library (Windows x64)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ChonkyStation3/**'
+      - 'Dependencies/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-emulator-core.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - name: Checkout with recursive submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure C++ emulator code
+        shell: pwsh
+        run: cmake -S . -B build-desktop -A x64 -DENABLE_XBOX_BUILD=ON -DENABLE_USER_BUILD=ON -DENABLE_QT_BUILD=OFF -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
+      - name: Compile Xbox-facing shared core (desktop Windows only)
+        shell: pwsh
+        run: cmake --build build-desktop --config Release --target ChonkyStation3 --parallel 2
+      - name: Upload Windows test DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChonkyStation3-Windows-x64-NOT-UWP
+          path: |
+            build-desktop/Release/ChonkyStation3.dll
+            build-desktop/ChonkyStation3/Release/ChonkyStation3.dll
+          if-no-files-found: error
+      - name: Scope warning
+        shell: pwsh
+        run: Write-Output "Windows x64 DLL cannot be installed as Xbox UWP APPX. Graphics and Xbox support remain unverified."

@@ -1,0 +1,61 @@
+name: Full PS3 Core UWP x64 Portability Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ChonkyStation3/**'
+      - 'Dependencies/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/full-uwp-core.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ps3-full-uwp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-uwp:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout complete emulator and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Restore CMake build cache (same runner and toolchain)
+        uses: actions/cache@v4
+        with:
+          path: build-uwp-core
+          key: ps3-uwp-win2022-v2-${{ hashFiles('CMakeLists.txt', '.gitmodules') }}-${{ github.sha }}
+          restore-keys: |
+            ps3-uwp-win2022-v2-${{ hashFiles('CMakeLists.txt', '.gitmodules') }}-
+
+      - name: Configure genuine UWP native x64 compilation
+        shell: pwsh
+        run: |
+          cmake -S . -B build-uwp-core -G "Visual Studio 17 2022" -A x64 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0.19041.0 -DENABLE_XBOX_BUILD=ON -DENABLE_USER_BUILD=ON -DENABLE_QT_BUILD=OFF -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
+          if ($LASTEXITCODE -ne 0) { throw "UWP core configure failed" }
+
+      - name: Compile complete ChonkyStation3 code for AppContainer
+        shell: pwsh
+        run: |
+          cmake --build build-uwp-core --config Release --target ChonkyStation3 --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "Full UWP emulator core compilation failed" }
+
+      - name: Upload compiled UWP library (not a playable app)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChonkyStation3-UWP-x64-LIBRARY-NOT-PLAYABLE
+          path: |
+            build-uwp-core/Release/ChonkyStation3.dll
+            build-uwp-core/Release/ChonkyStation3.lib
+          if-no-files-found: error
+
+      - name: Scope
+        shell: pwsh
+        run: Write-Output "Successful UWP DLL compile does not prove RSX OpenGL compatibility, host integration, Xbox One launch or PS3 gameplay."

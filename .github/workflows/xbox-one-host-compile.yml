@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
       - name: Generate host assets
         shell: pwsh
         run: ./tools/generate-probe-assets.ps1 -OutputDir "$env:GITHUB_WORKSPACE/XboxOneHost/Assets"

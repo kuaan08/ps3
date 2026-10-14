@@ -222,8 +222,13 @@ void PlayStation3::gameSelector() {
     for (int i = 0; i < game_loader.games.size(); i++) {
         printf("%s\n", std::format("[{:>3d}] {} | {:<40s} | {:<40s}", i, game_loader.games[i].id, game_loader.games[i].title, game_loader.games[i].content_path.generic_string()).c_str());
     }
+    // The Xbox UI must not index games[0] when no compatible titles are installed.
+    if (game_loader.games.empty()) {
+        throw std::runtime_error("No bootable PS3 games found in dev_hdd0/game. Install a valid game or provide a homebrew ELF.");
+    }
+
     // Ask the user what game to run
-    int idx;
+    int idx = -1;
     #ifdef __XBOX_BUILD
     idx = ImGuiGameSelector(game_loader.games);
     #else
@@ -235,6 +240,9 @@ void PlayStation3::gameSelector() {
     }
     #endif
 
+    if (idx < 0 || static_cast<size_t>(idx) >= game_loader.games.size()) {
+        throw std::runtime_error("Game selection was cancelled or is out of range.");
+    }
     loadGame(game_loader.games[idx]);
 }
 
@@ -279,8 +287,9 @@ void PlayStation3::init() {
     try {
         prx_manager.initializeLibraries();
     }
-    catch (std::runtime_error e) {
+    catch (const std::runtime_error& e) {
         printCrashInfo(e);
+        throw; // A failed PRX initialization is not a successful game boot.
     }
 
     // SPU Debugging options
@@ -294,15 +303,29 @@ void PlayStation3::init() {
 }
 
 void PlayStation3::run() {
+    if (stopped) return;
+
     try {
-        curr_block_cycles = 0;
-        curr_block = 0;
+        // The original Xbox build could run up to 3.2 billion emulated cycles
+        // before returning to its SDL event loop. Use short cooperative slices
+        // so the Xbox One Jaguar remains responsive even with a slow interpreter.
+#ifdef __XBOX_BUILD
+        constexpr u64 max_steps_per_slice = 16384;
+        u64 steps = 0;
+        while (cycle_count < CPU_FREQ && steps < max_steps_per_slice) {
+            step();
+            ++steps;
+        }
+#else
         while (cycle_count < CPU_FREQ)
             step();
-        cycle_count = 0;
+#endif
+        if (cycle_count >= CPU_FREQ)
+            cycle_count %= CPU_FREQ;
     }
-    catch (std::runtime_error e) {
+    catch (const std::runtime_error& e) {
         printCrashInfo(e);
+        stopped = true; // Return to the host rather than calling exit(0).
     }
 }
 
@@ -341,7 +364,7 @@ void PlayStation3::printCrashInfo(std::runtime_error err) {
     //PPUDisassembler::disasm(ppu->state, crash_analyzer.lastInstr(), &mem);
     //crash_analyzer.analyzeCrash(error);
 #endif
-    std::exit(0);
+    // The caller decides whether to halt, display the error or recover.
 }
 
 void PlayStation3::flip() {

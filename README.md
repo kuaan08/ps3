@@ -2,7 +2,7 @@
 
 An experimental PlayStation 3 emulator port targeting **Xbox One / Xbox One S / Xbox One X in UWP Developer Mode (x64)**.
 
-> **Status: ChonkyStation3 source imported and a separate UWP x64 Direct3D 11 hardware probe successfully compiled and packaged.** The emulator core has **not** been integrated into the Xbox package and no PS3 game has been verified on Xbox One. This is not a release-ready emulator.
+> **Status (2026-10-14): full native UWP x64 host + ChonkyStation3 PPU/SPU/RSX core + SDL2 packaged into a signed experimental Xbox One APPX.** CI verified the components, but no PS3 game has been verified on actual Xbox One hardware. The OpenGL 4.1 RSX rendering path is not functional on Xbox UWP without a compatible backend.
 
 ## Upstream
 
@@ -45,3 +45,11 @@ A signed **native UWP x64 Direct3D 11 + controller + memory diagnostic APPX** wa
 - [Probe source, test steps, and trust requirements](XboxOneProbe/README.md)
 
 An actual Xbox One hardware test is still needed. The original OpenGL 4.1 RSX backend has not yet been ported to Direct3D 11, and the desktop Windows emulator DLL cannot simply be copied into the UWP package.
+
+## Full-core UWP x64 package (14 October 2026)
+
+**A compiled and signed APPX containing the native PS3 emulator core is now available.** [Successful Xbox One Fat full-core APPX build #38571372228](https://github.com/kuaan08/ps3/actions/runs/38571372228). Download the artifact `PS3-XboxOne-Fat-EXPERIMENTAL-UWP-FULL-CORE` and extract `PS3XboxOneFat-Experimental.appx` and `PS3XboxOneEmulatorDev.cer`.
+
+GitHub Actions verified that the signed package contains `XboxOneHost.exe`, `ChonkyStation3.dll`, `SDL2.dll` and a valid AppX manifest. The project has an incremental MSVC build cache. This build is an **experimental compatibility test, not a confirmed playable PS3 emulator**; the desktop-OpenGL-only RSX requires significant work before games render correctly on Xbox One Fat.
+
+See [XboxOneHost deployment instructions](XboxOneHost/README.md).

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+         IgnorableNamespaces="uap mp">
+  <Identity Name="PS3XboxOneEmulatorExperimental" Publisher="CN=PS3XboxOneEmulatorDev" Version="0.1.0.0" ProcessorArchitecture="x64" />
+  <mp:PhoneIdentity PhoneProductId="09ae824c-2f85-46ad-a02b-9ae62ae3bac6" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
+  <Properties>
+    <DisplayName>PS3 Xbox One Emu Experimental</DisplayName>
+    <PublisherDisplayName>PS3 Xbox One Experimental Project</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+  </Dependencies>
+  <Resources><Resource Language="en-US" /></Resources>
+  <Applications>
+    <Application Id="App" Executable="XboxOneProbe.exe" EntryPoint="PS3XboxOneEmulatorExperimental.App">
+      <uap:VisualElements DisplayName="PS3 Xbox One Emulator Alpha"
+           Description="Experimental ChonkyStation3 native core; no game compatibility established"
+           BackgroundColor="#092032"
+           Square44x44Logo="Assets\Logo44.png"
+           Square150x150Logo="Assets\Logo150.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\WideLogo.png" />
+        <uap:SplashScreen Image="Assets\Splash.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+  <Capabilities />
+</Package>

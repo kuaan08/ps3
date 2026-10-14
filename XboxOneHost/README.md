@@ -40,3 +40,13 @@ This workflow uses `actions/cache@v4` for `build-uwp-core` and `XboxOneHost/x64`
 No copyrighted Sony firmware, PS3 games, keys or decrypted commercial assets are included.
 
 See [the build matrix](../docs/BUILD-STATUS-AND-CACHE.md) and [test plan](../docs/TEST-PLAN.md).
+
+## Native D3D11 RSX milestone (not general game rendering)
+
+The experimental UWP host now looks up the native C ABI exports `xbox_ps3_create`, `xbox_ps3_step`, `xbox_ps3_frames`, and `xbox_ps3_destroy`. This allows a cooperative PS3 CPU emulation session without trying to create desktop OpenGL 4.1.
+
+To attempt an ELF test, place a legally obtained basic PS3 homebrew executable at **`LocalState/homebrew/boot.elf`** (exact name), start the app and press **A**. Press **B** to stop the current guest. Logs appear in `LocalState/xbox-emulator.log` and the device debug output. A missing ELF does not launch a fake game.
+
+The first RSX D3D11 backend implements guest FIFO decoding for reference/semaphore commands, color clear, and flip, using the Xbox host's real `ID3D11DeviceContext` and render target. It **fails explicitly** on unsupported draw, shader, texture and depth/stencil operations. These features must be implemented before real game graphics can be expected. This milestone must still be tested on actual Xbox One Fat hardware.
+
+The old OpenGL path remains in the library for development/reference, but it is not the primary UWP homebrew route.

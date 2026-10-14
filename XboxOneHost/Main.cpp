@@ -115,6 +115,22 @@ public:
             if (pressedA && !wasAPressed_)
                 AttemptEmulationBoot();
             wasAPressed_ = pressedA;
+            if (session_ && step_) {
+                char fault[512]{};
+                const int status = step_(session_, fault, sizeof(fault));
+                if (status != 0) {
+                    OutputDebugStringA(fault);
+                    WriteLog(status == 1 ? L"PS3 homebrew stopped" : L"PS3 homebrew execution failed");
+                    destroy_(session_);
+                    session_ = nullptr;
+                }
+            }
+            if (pressedB && session_) {
+                destroy_(session_);
+                session_ = nullptr;
+                attempted_ = false;
+                WriteLog(L"Guest session stopped by the Xbox B button");
+            }
             Render(pressedA, pressedB);
 
             const uint64_t now = GetTickCount64();
@@ -129,6 +145,11 @@ public:
                     static_cast<unsigned long long>(MemoryManager::AppMemoryUsage / (1024 * 1024)),
                     static_cast<unsigned long long>(MemoryManager::AppMemoryUsageLimit / (1024 * 1024)),
                     pressedA ? 1 : 0, pressedB ? 1 : 0);
+                if (session_ && frames_) {
+                    wchar_t guest[120]{};
+                    swprintf_s(guest, L"Guest RSX flips so far: %llu", frames_(session_));
+                    WriteLog(guest);
+                }
                 WriteLog(info);
             }
         }
@@ -137,6 +158,10 @@ public:
     virtual void Uninitialize()
     {
         WriteLog(L"UWP probe shutting down");
+        if (session_ && destroy_) {
+            destroy_(session_);
+            session_ = nullptr;
+        }
         target_.Reset();
         swapChain_.Reset();
         context_.Reset();
@@ -154,6 +179,26 @@ private:
     bool emulationReady_ = false;
     HMODULE core_ = nullptr;
     HMODULE sdl_ = nullptr;
+    using GuestCreateFn = void* (__cdecl*)(const char*, const char*,
+        ID3D11DeviceContext*, ID3D11RenderTargetView*, char*, size_t);
+    using GuestStepFn = int (__cdecl*)(void*, char*, size_t);
+    using GuestDestroyFn = void (__cdecl*)(void*);
+    using GuestFrameFn = unsigned long long (__cdecl*)(void*);
+    GuestCreateFn create_ = nullptr;
+    GuestStepFn step_ = nullptr;
+    GuestDestroyFn destroy_ = nullptr;
+    GuestFrameFn frames_ = nullptr;
+    void* session_ = nullptr;
+
+    static std::string Utf8(const std::wstring& wide) {
+        const int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1,
+            nullptr, 0, nullptr, nullptr);
+        if (size <= 0) return {};
+        std::string str(static_cast<size_t>(size), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, &str[0], size, nullptr, nullptr);
+        str.resize(static_cast<size_t>(size - 1));
+        return str;
+    }
 
     // This host is a real bridge to the PS3 emulation library. It does not
     // silently replace an unavailable graphics renderer with a fake game.
@@ -177,8 +222,15 @@ private:
             WriteLog(status);
             return;
         }
+        create_ = reinterpret_cast<GuestCreateFn>(GetProcAddress(core_, "xbox_ps3_create"));
+        step_ = reinterpret_cast<GuestStepFn>(GetProcAddress(core_, "xbox_ps3_step"));
+        destroy_ = reinterpret_cast<GuestDestroyFn>(GetProcAddress(core_, "xbox_ps3_destroy"));
+        frames_ = reinterpret_cast<GuestFrameFn>(GetProcAddress(core_, "xbox_ps3_frames"));
         emulationReady_ = true;
-        WriteLog(L"ChonkyStation3 UWP DLL + SDL2 were loaded; press A to attempt ELF menu boot");
+        if (create_ && step_ && destroy_)
+            WriteLog(L"Native RSX D3D11 guest API found. Copy homebrew/boot.elf into LocalState; press A to run.");
+        else
+            WriteLog(L"Native RSX D3D11 guest API absent; legacy SDL OpenGL path is not suitable for Xbox One.");
     }
 
     void AttemptEmulationBoot()
@@ -187,6 +239,33 @@ private:
         attempted_ = true;
         if (!emulationReady_) {
             WriteLog(L"Emulation not started: UWP core or SDL2 library is unavailable");
+            return;
+        }
+        if (create_ && step_ && destroy_) {
+            const std::wstring local(ApplicationData::Current->LocalFolder->Path->Data());
+            const std::wstring elf = local + L"\\homebrew\\boot.elf";
+            if (GetFileAttributesW(elf.c_str()) == INVALID_FILE_ATTRIBUTES) {
+                WriteLog(L"HOME BREW NOT FOUND: transfer LocalState/homebrew/boot.elf via Device Portal.");
+                attempted_ = false;
+                return;
+            }
+            const std::string elf8 = Utf8(elf);
+            const std::string state8 = Utf8(local);
+            if (elf8.empty() || state8.empty()) {
+                WriteLog(L"PS3 ELF or LocalState path UTF-8 conversion failed");
+                attempted_ = false;
+                return;
+            }
+            char error[512]{};
+            session_ = create_(elf8.c_str(), state8.c_str(),
+                               context_.Get(), target_.Get(), error, sizeof(error));
+            if (!session_) {
+                OutputDebugStringA(error);
+                WriteLog(L"PS3 guest initialization failed (see preceding debug output)");
+                attempted_ = false;
+                return;
+            }
+            WriteLog(L"Guest PPU/SPU initialized with native RSX D3D11 clear/flip backend");
             return;
         }
         using SDLInitFn = int(__cdecl*)(unsigned);
@@ -286,6 +365,12 @@ private:
     void OnSizeChanged(CoreWindow^, WindowSizeChangedEventArgs^)
     {
         if (!swapChain_) return;
+        if (session_ && destroy_) {
+            destroy_(session_);
+            session_ = nullptr;
+            attempted_ = false;
+            WriteLog(L"Xbox display resized; guest stopped to prevent stale D3D11 render targets");
+        }
         context_->OMSetRenderTargets(0, nullptr, nullptr);
         target_.Reset();
         // BufferCount 0 keeps the previous DXGI buffer count.
@@ -344,8 +429,10 @@ private:
         context_->OMSetRenderTargets(1, target_.GetAddressOf(), nullptr);
         const float ready[] = { 0.03f, 0.21f, 0.12f, 1.f };
         const float blocked[] = { 0.27f, 0.09f, 0.07f, 1.f };
-        context_->ClearRenderTargetView(target_.Get(),
-            attempted_ ? blocked : emulationReady_ ? ready : b ? no : normal);
+        if (!session_) {
+            context_->ClearRenderTargetView(target_.Get(),
+                attempted_ ? blocked : emulationReady_ ? ready : b ? no : normal);
+        }
         CheckHR(swapChain_->Present(1, 0), L"Present");
     }
 };

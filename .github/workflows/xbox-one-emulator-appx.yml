@@ -1,0 +1,125 @@
+name: Xbox One Fat PS3 Core APPX (Experimental)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'ChonkyStation3/**'
+      - 'XboxOneHost/**'
+      - 'Dependencies/**'
+      - 'tools/generate-probe-assets.ps1'
+      - '.github/workflows/xbox-one-emulator-appx.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ps3-xbox-appx-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-appx:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout full emulator and dependencies
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Restore incremental UWP MSVC cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-uwp-core
+            XboxOneHost/x64
+          key: ps3-full-appx-msvc-win2022-v1-${{ hashFiles('CMakeLists.txt', 'XboxOneHost/XboxOneHost.vcxproj') }}-${{ github.sha }}
+          restore-keys: |
+            ps3-full-appx-msvc-win2022-v1-${{ hashFiles('CMakeLists.txt', 'XboxOneHost/XboxOneHost.vcxproj') }}-
+
+      - name: Configure PS3 emulator as x64 WindowsStore native library
+        shell: cmd
+        run: cmake -S . -B build-uwp-core -G "Visual Studio 17 2022" -A x64 -DCMAKE_SYSTEM_NAME:STRING=WindowsStore -DCMAKE_SYSTEM_VERSION:STRING=10.0 -DENABLE_XBOX_BUILD:BOOL=ON -DENABLE_USER_BUILD:BOOL=ON -DENABLE_QT_BUILD:BOOL=OFF -DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF
+
+      - name: Compile actual PPU SPU RSX native UWP emulator library
+        shell: pwsh
+        run: |
+          cmake --build build-uwp-core --config Release --target ChonkyStation3 --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "Native Xbox UWP emulator core did not compile: no misleading APPX will be published" }
+
+      - name: Build native Xbox One host with core entry-point bridge
+        shell: pwsh
+        run: |
+          ./tools/generate-probe-assets.ps1 -OutputDir "$env:GITHUB_WORKSPACE/XboxOneHost/Assets"
+          msbuild XboxOneHost/XboxOneHost.vcxproj /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
+          if ($LASTEXITCODE -ne 0) { throw "Native Xbox host did not compile" }
+
+      - name: Stage full emulator, SDL2 and Xbox host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = Join-Path $env:RUNNER_TEMP "ps3-xbox-appx"
+          $root = Join-Path $env:GITHUB_WORKSPACE "XboxOneHost"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $exe = Join-Path $root 'x64/Release/XboxOneHost/XboxOneHost.exe'
+          if (!(Test-Path $exe)) { throw "No UWP XboxOneHost.exe" }
+          Copy-Item $exe (Join-Path $stage 'XboxOneHost.exe')
+          Copy-Item (Join-Path $root 'Package.appxmanifest') (Join-Path $stage 'AppxManifest.xml')
+          Copy-Item (Join-Path $root 'Assets') (Join-Path $stage 'Assets') -Recurse
+          $core = Get-ChildItem -Path 'build-uwp-core' -Filter ChonkyStation3.dll -Recurse -File | Select-Object -First 1
+          if (!$core -or $core.Length -lt 100000) { throw "Missing actual native UWP PS3 core DLL" }
+          Copy-Item $core.FullName (Join-Path $stage 'ChonkyStation3.dll')
+          $sdl = Get-ChildItem -Path 'build-uwp-core' -Filter SDL2.dll -Recurse -File | Select-Object -First 1
+          if (!$sdl) { throw "Missing UWP SDL2.dll: cannot produce complete package" }
+          Copy-Item $sdl.FullName (Join-Path $stage 'SDL2.dll')
+          # Copy other built non-system runtime DLLs only if present.
+          $extra = Get-ChildItem -Path 'build-uwp-core' -Recurse -File -Filter *.dll | Where-Object { $_.Name -notin @('SDL2.dll', 'ChonkyStation3.dll') }
+          foreach ($lib in $extra) { Copy-Item $lib.FullName (Join-Path $stage $lib.Name) -Force }
+          Write-Host "Staged native UWP files:"
+          Get-ChildItem $stage -File | Select-Object Name,Length | Format-Table
+
+      - name: Sign installable Xbox One UWP package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:GITHUB_WORKSPACE 'XboxOneHost'
+          $stage = Join-Path $env:RUNNER_TEMP 'ps3-xbox-appx'
+          $sdk = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64'
+          $make = Join-Path $sdk 'makeappx.exe'
+          $sign = Join-Path $sdk 'signtool.exe'
+          $appx = Join-Path $root 'PS3XboxOneFat-Experimental.appx'
+          & $make pack /o /d $stage /p $appx
+          if ($LASTEXITCODE -ne 0) { throw 'APPX packing failed' }
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PS3XboxOneEmulatorDev' -CertStoreLocation 'Cert:\CurrentUser\My' -NotAfter (Get-Date).AddMonths(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $root 'PS3XboxOneEmulatorDev.cer') | Out-Null
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $appx
+          if ($LASTEXITCODE -ne 0) { throw 'APPX signing failed' }
+          Write-Host 'Signed native emulator host and core APPX; game compatibility is NOT verified.'
+
+      - name: Verify APPX contains actual emulator
+        shell: pwsh
+        run: |
+          $appx = 'XboxOneHost/PS3XboxOneFat-Experimental.appx'
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $appx))
+          try {
+            $names = @($zip.Entries | ForEach-Object FullName)
+            foreach ($required in @('XboxOneHost.exe','ChonkyStation3.dll','SDL2.dll','AppxManifest.xml')) {
+              if ($names -notcontains $required) { throw "Incomplete Xbox package: missing $required" }
+            }
+            $dll = $zip.GetEntry('ChonkyStation3.dll')
+            if ($dll.Length -lt 100000) { throw 'Emulator core DLL unexpectedly small' }
+            Write-Output "Package verified: Xbox host, ChonkyStation3 UWP PS3 core, SDL2, manifest, assets"
+          } finally { $zip.Dispose() }
+
+      - name: Publish complete installable Xbox One experimental APPX
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS3-XboxOne-Fat-EXPERIMENTAL-UWP-FULL-CORE
+          path: |
+            XboxOneHost/PS3XboxOneFat-Experimental.appx
+            XboxOneHost/PS3XboxOneEmulatorDev.cer
+          if-no-files-found: error
+          retention-days: 30

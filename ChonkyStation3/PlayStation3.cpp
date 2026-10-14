@@ -211,7 +211,7 @@ PlayStation3::PlayStation3(const fs::path& executable) : elf_parser(executable),
 PlayStation3::~PlayStation3() {
     // Free memory
     for (auto& i : mem.regions)
-        free(i->mem);
+        delete[] i->mem; // MemoryRegion allocates with new[]; free() corrupts the heap.
 }
 
 void PlayStation3::gameSelector() {

@@ -19,70 +19,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Generate diagnostic package icons
+      - name: Generate package icons
         shell: pwsh
         run: ./tools/generate-probe-assets.ps1
-
-      - name: Build native UWP x64 AppContainer project
+      - name: Compile UWP x64 native project
+        shell: pwsh
+        run: msbuild XboxOneProbe/XboxOneProbe.vcxproj /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
+      - name: Make and sign APPX
         shell: pwsh
         run: |
-          msbuild XboxOneProbe/XboxOneProbe.vcxproj /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:GenerateAppxPackageOnBuild=true
-
-      - name: Pack native UWP files into APPX
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $folder = "$env:GITHUB_WORKSPACE/XboxOneProbe"
-          $stage = "$env:RUNNER_TEMP/ps3-uwp-stage"
+          $ErrorActionPreference = 'Stop'
+          $folder = Join-Path $env:GITHUB_WORKSPACE 'XboxOneProbe'
+          $stage = Join-Path $env:RUNNER_TEMP 'uwp-stage'
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
-          Copy-Item "$folder/x64/Release/XboxOneProbe/XboxOneProbe.exe" "$stage/XboxOneProbe.exe"
-          Copy-Item "$folder/Package.appxmanifest" "$stage/AppxManifest.xml"
-          Copy-Item "$folder/Assets" "$stage/Assets" -Recurse
-          $makeappx = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter makeappx.exe -Recurse |
-            Where-Object { $_.FullName -match '\\x64\\makeappx.exe
-
-      - uses: actions/upload-artifact@v4
+          Copy-Item (Join-Path $folder 'x64/Release/XboxOneProbe/XboxOneProbe.exe') (Join-Path $stage 'XboxOneProbe.exe')
+          Copy-Item (Join-Path $folder 'Package.appxmanifest') (Join-Path $stage 'AppxManifest.xml')
+          Copy-Item (Join-Path $folder 'Assets') (Join-Path $stage 'Assets') -Recurse
+          $sdk = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64'
+          $make = Join-Path $sdk 'makeappx.exe'
+          $sign = Join-Path $sdk 'signtool.exe'
+          if (!(Test-Path $make)) { throw 'MakeAppx missing' }
+          if (!(Test-Path $sign)) { throw 'SignTool missing' }
+          $appx = Join-Path $folder 'PS3XboxOneFatProbe.appx'
+          & $make pack /o /d $stage /p $appx
+          if ($LASTEXITCODE -ne 0) { throw 'MakeAppx failed' }
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PS3XboxOneProbeDev' -CertStoreLocation 'Cert:\CurrentUser\My' -NotAfter (Get-Date).AddMonths(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $folder 'PS3XboxOneProbeDev.cer') | Out-Null
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $appx
+          if ($LASTEXITCODE -ne 0) { throw 'SignTool failed' }
+          & $sign verify /pa /v $appx
+          if ($LASTEXITCODE -ne 0) { throw 'SignTool verify failed' }
+      - name: Upload package
+        uses: actions/upload-artifact@v4
         with:
-          name: PS3-XboxOne-Fat-UWP-HARDWARE-PROBE-NOT-EMULATOR
+          name: XboxOneFat-UWP-GPU-Memory-Probe-NOT-PS3-Emulator
           path: |
-            XboxOneProbe/**/*.appx
-            XboxOneProbe/PS3XboxOneProbeDev.cer
-          if-no-files-found: error
- } |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $makeappx) { throw "MakeAppx.exe missing" }
-          & $makeappx.FullName pack /o /d $stage /p "$folder/PS3XboxOneFatProbe.appx"
-          if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed" }
-
-      - name: Sign experimental UWP package with disposable certificate
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=PS3XboxOneProbeDev" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable -NotAfter (Get-Date).AddMonths(3)
-          Export-Certificate -Cert $cert -FilePath "$env:GITHUB_WORKSPACE/XboxOneProbe/PS3XboxOneProbeDev.cer" | Out-Null
-          $tool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse |
-            Where-Object { $_.FullName -match '\\x64\\signtool.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: PS3-XboxOne-Fat-UWP-HARDWARE-PROBE-NOT-EMULATOR
-          path: |
-            XboxOneProbe/**/*.appx
-            XboxOneProbe/PS3XboxOneProbeDev.cer
-          if-no-files-found: error
- } |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $tool) { throw "signtool.exe not found" }
-          $appx = "$env:GITHUB_WORKSPACE/XboxOneProbe/PS3XboxOneFatProbe.appx"
-          & $tool.FullName sign /fd SHA256 /sha1 $cert.Thumbprint /s My $appx
-          if ($LASTEXITCODE -ne 0) { throw "SignTool failed" }
-          & $tool.FullName verify /pa /v $appx
-          if ($LASTEXITCODE -ne 0) { throw "SignTool verification failed" }
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: PS3-XboxOne-Fat-UWP-HARDWARE-PROBE-NOT-EMULATOR
-          path: |
-            XboxOneProbe/**/*.appx
-            XboxOneProbe/PS3XboxOneProbeDev.cer
+            XboxOneProbe/*.appx
+            XboxOneProbe/*.cer
           if-no-files-found: error

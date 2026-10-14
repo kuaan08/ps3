@@ -17,4 +17,4 @@ static constexpr u64 RSX_VIDEO_MEM_START = 0xC0000000;
 static constexpr u64 RSX_VIDEO_MEM_END = RSX_VIDEO_MEM_START + RSX_VIDEO_MEM_SIZE;
 static constexpr u64 SPU_MEM_SIZE = 512_KB; // Should be 256KB (size of spu local storage I think?), but things break if I make it 256KB. I'll figure it out once I implement SPUs.
 static constexpr u64 SPU_MEM_START = 0xE0000000;
-static constexpr u64 SPU_MEM_END = RSX_VIDEO_MEM_START + RSX_VIDEO_MEM_SIZE;
+static constexpr u64 SPU_MEM_END = SPU_MEM_START + SPU_MEM_SIZE;

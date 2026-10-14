@@ -42,7 +42,10 @@ void* __cdecl xbox_ps3_create(const char* elf_utf8,
             throw std::runtime_error("Unable to set sandbox game-data path");
 
         auto session = std::make_unique<XboxPS3Session>();
-        session->ps3 = std::make_unique<PlayStation3>(std::filesystem::u8path(elf_utf8));
+        // C++23 WindowsStore: avoid deprecated u8path and preserve UTF-8.
+        const auto elf_path = std::filesystem::path(
+            std::u8string(reinterpret_cast<const char8_t*>(elf_utf8)));
+        session->ps3 = std::make_unique<PlayStation3>(elf_path);
         session->ps3->rsx.initD3D11(context, target);
         session->ps3->setFlipHandler([pointer = session.get()] {
             ++pointer->frames;

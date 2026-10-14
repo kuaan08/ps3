@@ -12,6 +12,15 @@ static void require(bool condition, const char* message) {
 
 int main() {
     try {
+        require(SPU_MEM_END == SPU_MEM_START + SPU_MEM_SIZE, "SPU region bounds are wrong");
+        bool panic_ok = false;
+        try {
+            Helpers::panic("PS3 test error %d", 42);
+        } catch (const std::runtime_error& e) {
+            panic_ok = std::string(e.what()) == "PS3 test error 42";
+        }
+        require(panic_ok, "Error formatter returned padded or invalid text");
+
         // Use the emulator's real memory implementation, not a mock.
         Memory mem;
         const auto* entry = mem.alloc(2 * PAGE_SIZE);

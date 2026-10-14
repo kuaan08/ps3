@@ -61,6 +61,8 @@ public:
     u64 curr_block = 0;
     u64 skipped_cycles = 0;
     bool force_scheduler_update = false;
+    // Set on unrecoverable emulation errors. The Xbox host can return to its menu.
+    bool stopped = false;
 
     void gameSelector();
     void loadGame(const GameLoader::InstalledGame& game);

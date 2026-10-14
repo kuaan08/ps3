@@ -63,6 +63,16 @@ if(WINDOWS_STORE)
     set_source_files_properties(Dependencies/tinyfiledialogs/tinyfiledialogs.c
         PROPERTIES HEADER_FILE_ONLY TRUE)
 endif()
+if(WINDOWS_STORE AND ENABLE_XBOX_BUILD)
+    # Only UWP gets the native Xbox D3D11 surface backend and cooperative
+    # opaque session API. The desktop/OpenGL implementation remains intact.
+    target_compile_definitions(ChonkyStation3 PRIVATE CHONKYSTATION3_UWP_D3D11)
+    target_sources(ChonkyStation3 PRIVATE
+        ChonkyStation3/RSX/RSX_D3D11.cpp
+        ChonkyStation3/UWP/EmulatorD3D11.cpp)
+    target_link_libraries(ChonkyStation3 PRIVATE d3d11)
+endif()
+
 target_include_directories(ChonkyStation3 PUBLIC ChonkyStation3)
 target_include_directories(ChonkyStation3 PUBLIC ChonkyStation3/Common)
 target_include_directories(ChonkyStation3 PUBLIC ChonkyStation3/Loaders)

@@ -1,0 +1,404 @@
+#include "PlayStation3.hpp"
+#ifdef __XBOX_BUILD
+#include <SDL.h>
+#include <SDL_opengl.h>
+#include <imgui.h>
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_opengl3.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+GLuint LoadTextureFromFile(const char* filename) {
+    int width, height, channels;
+    unsigned char* data = stbi_load(filename, &width, &height, &channels, 0);
+    if (!data) {
+        printf("Failed to load image: %s\n", filename);
+        return 0;
+    }
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    GLenum format = (channels == 3) ? GL_RGB : GL_RGBA;
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    stbi_image_free(data);
+    return texture;
+}
+
+static int ImGuiGameSelector(const std::vector<GameLoader::InstalledGame>& games) 
+{
+    SDL_Window*   currentWindow  = SDL_GL_GetCurrentWindow();
+    SDL_GLContext currentContext = SDL_GL_GetCurrentContext();
+
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = NULL; 
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; 
+    ImGui_ImplSDL2_InitForOpenGL(currentWindow, currentContext);
+    ImGui_ImplOpenGL3_Init("#version 410");
+    std::vector<GLuint> iconTextures;
+    std::vector<GLuint> bgTextures;
+    iconTextures.reserve(games.size());
+    bgTextures.reserve(games.size());
+    const char* localStatePathEnv = std::getenv("CHONKYSTATION3_LOCAL_STATE_PATH");
+    std::string basePath = localStatePathEnv ? localStatePathEnv : "E:/";
+
+for (const auto& game : games) {
+    std::string guestPath = game.content_path.string();
+    if (!guestPath.empty() && guestPath[0] == '/')
+        guestPath.erase(0, 1);
+
+    std::filesystem::path hostGamePath = std::filesystem::path(basePath) / guestPath;
+    std::string iconPath = (hostGamePath / "ICON0.png").generic_string();
+    std::string bgPath   = (hostGamePath / "PIC1.png").generic_string();
+
+    iconTextures.push_back(LoadTextureFromFile(iconPath.c_str()));
+    bgTextures.push_back(LoadTextureFromFile(bgPath.c_str()));
+}
+
+    int selected = 0;
+    bool selectionMade = false;
+
+    while (!selectionMade) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (event.type == SDL_QUIT) {
+                exit(0);
+            }
+            if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+                if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP && selected > 0)
+                    selected--;
+                else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN &&
+                         selected < static_cast<int>(games.size()) - 1)
+                    selected++;
+                else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A)
+                    selectionMade = true;
+            }
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_UP && selected > 0)
+                    selected--;
+                else if (event.key.keysym.sym == SDLK_DOWN &&
+                         selected < static_cast<int>(games.size()) - 1)
+                    selected++;
+                else if (event.key.keysym.sym == SDLK_RETURN)
+                    selectionMade = true;
+            }
+        }
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+
+        int hoveredIndex = -1;
+
+        int width, height;
+        SDL_GetWindowSize(currentWindow, &width, &height);
+        ImGui::SetNextWindowPos(ImVec2(width * 0.5f, height * 0.5f), 
+                                ImGuiCond_Always, 
+                                ImVec2(0.5f, 0.5f)); 
+        ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Always);
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize;
+        ImGui::Begin("Select Game", nullptr, flags);
+
+        for (int i = 0; i < static_cast<int>(games.size()); i++) {
+            if (iconTextures[i] != 0) {
+                ImGui::Image((ImTextureID)(uintptr_t)iconTextures[i], ImVec2(128, 64));
+                ImGui::SameLine();
+            }
+            std::string label = std::to_string(i) + ": " + games[i].title 
+                                + " (ID: " + games[i].id + ")";
+            if (ImGui::Selectable(label.c_str(), selected == i))
+                selected = i;
+            if (ImGui::IsItemHovered())
+                hoveredIndex = i;
+        }
+        ImGui::End();
+
+        if (hoveredIndex != -1 && bgTextures[hoveredIndex] != 0) {
+            ImGui::GetBackgroundDrawList()->AddImage(
+                static_cast<ImTextureID>(static_cast<uintptr_t>(bgTextures[hoveredIndex])),
+                ImVec2(0, 0), 
+                ImVec2(io.DisplaySize.x, io.DisplaySize.y)
+            );
+        }
+
+        ImGui::Render();
+        SDL_GL_MakeCurrent(currentWindow, currentContext);
+        int drawableWidth, drawableHeight;
+        SDL_GL_GetDrawableSize(currentWindow, &drawableWidth, &drawableHeight);
+        glViewport(0, 0, drawableWidth, drawableHeight);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        SDL_GL_SwapWindow(currentWindow);
+        SDL_Delay(16);
+    }
+
+    for (GLuint tex : iconTextures) {
+        if(tex != 0)
+            glDeleteTextures(1, &tex);
+    }
+    for (GLuint tex : bgTextures) {
+        if(tex != 0)
+            glDeleteTextures(1, &tex);
+    }
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+    return selected;
+}
+#endif
+
+
+PlayStation3::PlayStation3(const fs::path& executable) : elf_parser(executable), interpreter(mem, this), spu_interpreter(this), rsx(this), syscall(this), module_manager(this), thread_manager(this), spu_thread_manager(this), prx_manager(this), fs(this), lv2_obj(this, &handle_manager) {
+    ppu = &interpreter;
+    spu = &spu_interpreter;
+    
+    module_manager.init();
+
+    #ifdef __XBOX_BUILD
+    std::string basePath;
+    const char* localStatePathEnv = std::getenv("CHONKYSTATION3_LOCAL_STATE_PATH");
+
+    if (localStatePathEnv != nullptr) {
+        basePath = localStatePathEnv;
+        printf("Filesystem: Using local state path from environment variable: %s\n", basePath.c_str());
+    } else {
+        basePath = "E:/";
+        printf("Filesystem: Environment variable not found, defaulting to basePath: %s\n", basePath.c_str());
+    }
+    std::filesystem::path devFlashFolder = std::filesystem::path(basePath) / "dev_flash";
+    std::filesystem::path devHdd0Folder  = std::filesystem::path(basePath) / "dev_hdd0";
+    std::filesystem::path devHdd1Folder  = std::filesystem::path(basePath) / "dev_hdd1";
+    std::filesystem::path devUsb000Folder = std::filesystem::path(basePath) / "dev_usb000";
+    std::filesystem::path appHomeFolder  = std::filesystem::path(basePath) / "app_home";
+    
+    std::filesystem::create_directories(devFlashFolder);
+    std::filesystem::create_directories(devHdd0Folder);
+    std::filesystem::create_directories(devHdd1Folder);
+    std::filesystem::create_directories(devUsb000Folder);
+    std::filesystem::create_directories(appHomeFolder);
+    
+    fs.mount(Filesystem::Device::DEV_FLASH, devFlashFolder.string().c_str());
+    fs.mount(Filesystem::Device::DEV_HDD0, devHdd0Folder.string().c_str());
+    fs.mount(Filesystem::Device::DEV_HDD1, devHdd1Folder.string().c_str());
+    fs.mount(Filesystem::Device::DEV_USB000, devUsb000Folder.string().c_str());
+    fs.mount(Filesystem::Device::APP_HOME, appHomeFolder.string().c_str());
+
+    #else
+    // Initialize filesystem
+    fs.mount(Filesystem::Device::DEV_FLASH, "./Filesystem/dev_flash/");
+    fs.mount(Filesystem::Device::DEV_HDD0, "./Filesystem/dev_hdd0/");
+    fs.mount(Filesystem::Device::DEV_HDD1, "./Filesystem/dev_hdd1/");
+    fs.mount(Filesystem::Device::DEV_USB000, "./Filesystem/dev_usb000/");
+    fs.mount(Filesystem::Device::APP_HOME, "./Filesystem/app_home/");
+    fs.initialize();
+    #endif
+
+    // An executable was passed as CLI argument
+    if (!(executable.generic_string() == "")) {
+        elf_path = executable;
+    }
+
+    // Load settings
+    settings.load();
+}
+
+PlayStation3::~PlayStation3() {
+    // Free memory
+    for (auto& i : mem.regions)
+        free(i->mem);
+}
+
+void PlayStation3::gameSelector() {
+    // Find installed games
+    GameLoader game_loader = GameLoader(this);  // Requires dev_hdd0 to be mounted
+    // Print games
+    printf("Found %lld installed games:\n", game_loader.games.size());
+    for (int i = 0; i < game_loader.games.size(); i++) {
+        printf("%s\n", std::format("[{:>3d}] {} | {:<40s} | {:<40s}", i, game_loader.games[i].id, game_loader.games[i].title, game_loader.games[i].content_path.generic_string()).c_str());
+    }
+    // Ask the user what game to run
+    int idx;
+    #ifdef __XBOX_BUILD
+    idx = ImGuiGameSelector(game_loader.games);
+    #else
+    printf("Enter game to run (index): ");
+    std::cin >> idx;
+    while (idx < 0 || idx >= game_loader.games.size()) {
+        printf("Invalid index. Retry: ");
+        std::cin >> idx;
+    }
+    #endif
+
+    loadGame(game_loader.games[idx]);
+}
+
+void PlayStation3::loadGame(const GameLoader::InstalledGame& game) {
+    curr_game = game;
+    // Tell cellGame the path of the game's contents
+    module_manager.cellGame.setContentPath(game.content_path);
+    // Get path of EBOOT.elf
+    elf_path = fs.guestPathToHost(game.content_path / "USRDIR/EBOOT.elf");
+    elf_path_encrypted = (game.content_path / "USRDIR/EBOOT.BIN").generic_string();
+}
+
+void PlayStation3::setFlipHandler(std::function<void(void)> const& handler) {
+    flip_handler = handler;
+}
+
+void PlayStation3::init() {
+    // Load ELF file
+    ELFLoader elf = ELFLoader(this, mem);
+    std::unordered_map<u32, u32> imports = {};
+    ELFLoader::PROCParam proc_param;
+    auto entry = elf.load(elf_path, imports, proc_param, module_manager);
+
+    // Register ELF module imports in module manager
+    for (auto& i : imports)
+        module_manager.registerImport(i.first, i.second);
+
+    // Create main thread
+    thread_manager.setTLS(elf.tls_vaddr, elf.tls_filesize, elf.tls_memsize);
+    elf_path_encrypted += '\0';
+    // TODO: Should the main thread have priority 0?
+    Thread* main_thread = thread_manager.createThread(entry, DEFAULT_STACK_SIZE, 0, 0, (const u8*)"main", elf.tls_vaddr, elf.tls_filesize, elf.tls_memsize, true, elf_path_encrypted);
+    ppu->state.gprs[11] = entry;
+    ppu->state.gprs[12] = proc_param.malloc_pagesize ? proc_param.malloc_pagesize : 0x100000;
+
+    prx_manager.createLv2PRXs();
+
+    // Load PRXs required by the ELF
+    prx_manager.loadModulesRecursively();
+
+    // Initialize libraries (must be done after creating main thread)
+    try {
+        prx_manager.initializeLibraries();
+    }
+    catch (std::runtime_error e) {
+        printCrashInfo(e);
+    }
+
+    // SPU Debugging options
+    if (!settings.debug.enableSPUAfterPC.empty()) {
+        enable_spu_on_pc = std::stoul(settings.debug.enableSPUAfterPC, 0, 16);
+        spu_thread_to_enable = settings.debug.spuThreadToEnable;
+        mem.watchpoints_r[enable_spu_on_pc] = std::bind(&PlayStation3::enableSPUOnPC, this, std::placeholders::_1);
+        mem.markAsSlowMem(enable_spu_on_pc >> PAGE_SHIFT, true, false);
+        printf("Will enable SPU Thread %s on pc 0x%08x\n", spu_thread_to_enable.c_str(), enable_spu_on_pc);
+    }
+}
+
+void PlayStation3::run() {
+    try {
+        curr_block_cycles = 0;
+        curr_block = 0;
+        while (cycle_count < CPU_FREQ)
+            step();
+        cycle_count = 0;
+    }
+    catch (std::runtime_error e) {
+        printCrashInfo(e);
+    }
+}
+
+static constexpr int reschedule_every_n_blocks = 1024;
+void PlayStation3::step() {
+    ppu->step();
+    spu->step();
+
+    if (force_scheduler_update || curr_block_cycles++ >= 2048) {
+        scheduler.tick(curr_block_cycles);
+        cycle_count += curr_block_cycles;
+        
+        curr_block_cycles = 0;
+        force_scheduler_update = false;
+        
+        if (curr_block++ >= reschedule_every_n_blocks) {
+            curr_block = 0;
+            thread_manager.reschedule();
+        }
+    }
+}
+
+void PlayStation3::printCrashInfo(std::runtime_error err) {
+    printf("PPU state:\n");
+    ppu->printState();
+    printf("SPU state:\n");
+    spu->printState();
+
+    const std::string error = err.what();
+    printf("FATAL: %s\n", err.what());
+
+#ifndef CHONKYSTATION3_USER_BUILD
+    ((PPUInterpreter*)ppu)->printCallStack();
+
+    //printf("The crash happened at the following instruction:\n");
+    //PPUDisassembler::disasm(ppu->state, crash_analyzer.lastInstr(), &mem);
+    //crash_analyzer.analyzeCrash(error);
+#endif
+    std::exit(0);
+}
+
+void PlayStation3::flip() {
+    module_manager.cellGcmSys.flip = 0;
+    if (module_manager.cellGcmSys.flip_callback) {
+        u32 old_r3 = ppu->state.gprs[3];
+        ppu->state.gprs[3] = 1; // Callback function is always called with 1 as first argument
+        ppu->runFunc(mem.read<u32>(module_manager.cellGcmSys.flip_callback), mem.read<u32>(module_manager.cellGcmSys.flip_callback + 4));
+        ppu->state.gprs[3] = old_r3;
+    }
+    mem.write<u64>(module_manager.cellGcmSys.label_addr + 0x10, 0);
+    mem.write<u64>(module_manager.cellGcmSys.label_addr + 0x10 + 8, 0);
+
+    flip_handler();
+}
+
+void PlayStation3::vblank() {
+    if (module_manager.cellGcmSys.vblank_handler) {
+        u32 old_r3 = ppu->state.gprs[3];
+        ppu->state.gprs[3] = 1; // Handler function is always called with 1 as first argument
+        ppu->runFunc(mem.read<u32>(module_manager.cellGcmSys.vblank_handler), mem.read<u32>(module_manager.cellGcmSys.vblank_handler + 4));
+        ppu->state.gprs[3] = old_r3;
+    }
+}
+
+void PlayStation3::skipToNextEvent() {
+    const u64 ticks = scheduler.tickToNextEvent();
+    cycle_count += ticks;
+    skipped_cycles += ticks;
+}
+
+void PlayStation3::forceSchedulerUpdate() {
+    force_scheduler_update = true;
+}
+
+void PlayStation3::pressButton(u32 button) {
+    int idx = 2;
+    if (button >= (1 << 16)) {
+        idx = 3;
+        button >>= 16;
+    }
+    module_manager.cellPad.buttons[idx] |= button;
+}
+
+void PlayStation3::resetButtons() {
+    for (int i = 0; i < CELL_PAD_MAX_CODES; i++)
+        module_manager.cellPad.buttons[i] = 0;
+}
+
+void PlayStation3::enableSPUOnPC(u32 unused) {
+    if (ppu->state.pc == enable_spu_on_pc) {
+        for (auto& i : spu_thread_manager.threads) {
+            if (i.name == spu_thread_to_enable) {
+                i.wakeUp();
+                mem.markAsFastMem(enable_spu_on_pc >> PAGE_SHIFT, mem.getPtr(enable_spu_on_pc & ~PAGE_MASK), true, true);
+                return;
+            }
+        }
+    }
+}

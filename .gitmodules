@@ -1,0 +1,18 @@
+[submodule "Dependencies/ELFIO"]
+	path = Dependencies/ELFIO
+	url = https://github.com/serge1/ELFIO.git
+[submodule "Dependencies/SDL"]
+	path = Dependencies/SDL
+	url = https://github.com/libsdl-org/SDL.git
+[submodule "Dependencies/xxHash"]
+	path = Dependencies/xxHash
+	url = https://github.com/Cyan4973/xxHash.git
+[submodule "Dependencies/imgui"]
+	path = Dependencies/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "Dependencies/stb"]
+	path = Dependencies/stb
+	url = https://github.com/nothings/stb.git
+[submodule "Dependencies/toml11"]
+	path = Dependencies/toml11
+	url = https://github.com/ToruNiina/toml11.git

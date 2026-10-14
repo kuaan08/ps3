@@ -1,0 +1,36 @@
+name: Xbox One x64 core smoke tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ChonkyStation3/**'
+      - 'Dependencies/Panda3DS/**'
+      - 'tests/**'
+      - '.github/workflows/xbox-one-core-tests.yml'
+  pull_request:
+    paths:
+      - 'ChonkyStation3/**'
+      - 'Dependencies/Panda3DS/**'
+      - 'tests/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memory-msvc-x64:
+    name: Core memory test (MSVC x64, SSE2)
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure core tests
+        run: cmake -S tests -B tests/build -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+      - name: Compile core tests
+        run: cmake --build tests/build --config Release --parallel 2
+      - name: Run core tests
+        run: ctest --test-dir tests/build -C Release --output-on-failure
+      - name: Important
+        shell: pwsh
+        run: Write-Output "A successful Windows x64 memory smoke test DOES NOT prove Xbox One UWP or PS3 game compatibility."

@@ -29,6 +29,7 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: microsoft/setup-msbuild@v2
       - name: Restore incremental UWP MSVC cache
         uses: actions/cache@v4
         with:
@@ -36,6 +37,7 @@ jobs:
             build-uwp-core
             XboxOneHost/x64
           key: ps3-full-appx-msvc-win2022-v1-${{ hashFiles('CMakeLists.txt', 'XboxOneHost/XboxOneHost.vcxproj') }}-${{ github.sha }}
+          save-always: true
           restore-keys: |
             ps3-full-appx-msvc-win2022-v1-${{ hashFiles('CMakeLists.txt', 'XboxOneHost/XboxOneHost.vcxproj') }}-
 

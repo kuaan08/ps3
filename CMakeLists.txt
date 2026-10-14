@@ -48,6 +48,10 @@ if(WINDOWS_STORE)
         VS_WINRT_COMPONENT OFF
         VS_GLOBAL_CompileAsWinRT "false"
     )
+    # Legacy PS3 HLE sources use POSIX-style getenv/strncpy/fopen.
+    # Keep compatibility until each call is migrated to UWP-safe CRT APIs.
+    # This does not relax other compiler warnings or platform restrictions.
+    target_compile_definitions(ChonkyStation3 PRIVATE _CRT_SECURE_NO_WARNINGS)
     # MSVC has NO /ZW- switch. Passing it actually leaves conflicting
     # C++/CX settings enabled, so rely on VS_WINRT_COMPONENT OFF instead.
 endif()

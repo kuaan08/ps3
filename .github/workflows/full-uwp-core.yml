@@ -32,6 +32,7 @@ jobs:
         with:
           path: build-uwp-core
           key: ps3-uwp-win2022-v2-${{ hashFiles('CMakeLists.txt', '.gitmodules') }}-${{ github.sha }}
+          save-always: true
           restore-keys: |
             ps3-uwp-win2022-v2-${{ hashFiles('CMakeLists.txt', '.gitmodules') }}-
 
@@ -39,6 +40,20 @@ jobs:
         shell: cmd
         run: cmake -S . -B build-uwp-core -G "Visual Studio 17 2022" -A x64 -DCMAKE_SYSTEM_NAME:STRING=WindowsStore -DCMAKE_SYSTEM_VERSION:STRING=10.0 -DENABLE_XBOX_BUILD:BOOL=ON -DENABLE_USER_BUILD:BOOL=ON -DENABLE_QT_BUILD:BOOL=OFF -DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF
 
+      - name: Disable C++/CX for the C++23 emulator core only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'build-uwp-core/ChonkyStation3.vcxproj'
+          if (!(Test-Path $path)) { throw "CMake did not generate $path" }
+          $xml = Get-Content $path -Raw
+          $before = ([regex]::Matches($xml, '<CompileAsWinRT>true</CompileAsWinRT>')).Count
+          $xml = $xml.Replace('<CompileAsWinRT>true</CompileAsWinRT>', '<CompileAsWinRT>false</CompileAsWinRT>')
+          # This is the VS compiler flag actually controlling /ZW; the SDL2
+          # project is untouched, because it uses UWP-specific C++/CX code.
+          $xml = $xml.Replace('<ClCompile>', '<ClCompile><CompileAsWinRT>false</CompileAsWinRT>')
+          Set-Content -Path $path -Value $xml -Encoding UTF8
+          Write-Output "Patched ChonkyStation3.vcxproj (previous C++/CX entries: $before)"
       - name: Compile complete ChonkyStation3 code for AppContainer
         shell: pwsh
         run: |

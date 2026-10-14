@@ -19,6 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
+      - name: Restore native UWP MSVC build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            XboxOneProbe/x64
+            XboxOneProbe/obj
+          key: xboxonefat-probe-msvc-v1-${{ hashFiles('XboxOneProbe/XboxOneProbe.vcxproj') }}-${{ github.sha }}
+          restore-keys: |
+            xboxonefat-probe-msvc-v1-${{ hashFiles('XboxOneProbe/XboxOneProbe.vcxproj') }}-
       - name: Generate package icons
         shell: pwsh
         run: ./tools/generate-probe-assets.ps1

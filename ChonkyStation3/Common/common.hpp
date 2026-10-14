@@ -35,22 +35,27 @@ namespace fs = std::filesystem;
 static constexpr u64 CPU_FREQ = 3200000000;
 
 namespace Helpers {
+// Build correctly sized error strings: the original sprintf reserved 512 KiB
+// per error and could overflow it, while keeping the trailing NUL padding.
+template <class... Args>
+static std::string formatError(const char* fmt, Args&&... args) {
+    const int length = std::snprintf(nullptr, 0, fmt, args...);
+    if (length < 0)
+        return "Error formatting failed";
+    std::string error(static_cast<size_t>(length), '\0');
+    std::snprintf(error.data(), error.size() + 1, fmt, args...);
+    return error;
+}
+
 template <class... Args>
 [[noreturn]] static void panic(const char* fmt, Args&&... args) {
-    std::string error;
-    error.resize(512_KB);
-    std::sprintf(error.data(), fmt, args...);
-    throw std::runtime_error(error);
+    throw std::runtime_error(formatError(fmt, args...));
 }
 
 template <class... Args>
 static void debugAssert(bool cond, const char* fmt, Args&&... args) {
-    if (!cond) [[unlikely]] {
-        std::string error;
-        error.resize(512_KB);
-        std::sprintf(error.data(), fmt, args...);
-        throw std::runtime_error(error);
-    }
+    if (!cond) [[unlikely]]
+        throw std::runtime_error(formatError(fmt, args...));
 }
 
 static auto readBinary(const fs::path& directory) -> std::vector<u8> {

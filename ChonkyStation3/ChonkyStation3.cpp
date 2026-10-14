@@ -1,5 +1,6 @@
 #include <iostream>
 #include <filesystem>
+#include <memory>
 #include <SDL.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -134,7 +135,12 @@ static std::string ShowBootWindow(SDL_Window* host_window, SDL_GLContext host_co
 
             if (ImGui::Button("Choose ELF", ImVec2(buttonWidth, 0)))
             {
-                std::filesystem::path usbPath("E:/");
+                const char* state = std::getenv("CHONKYSTATION3_LOCAL_STATE_PATH");
+                // UWP cannot rely on arbitrary drive letters being accessible.
+                // Let the host copy homebrew ELF files into writable LocalState.
+                std::filesystem::path usbPath = state && *state
+                    ? std::filesystem::path(state) / "homebrew"
+                    : std::filesystem::path("homebrew");
                 if (!std::filesystem::exists(usbPath) || !std::filesystem::is_directory(usbPath))
                 {
                     menuState = BootMenuState::ERROR_NO_USB;
@@ -164,7 +170,7 @@ static std::string ShowBootWindow(SDL_Window* host_window, SDL_GLContext host_co
         }
         else if (menuState == BootMenuState::CHOOSE_ELF)
         {
-            ImGui::TextUnformatted("Select an ELF from E:/");
+            ImGui::TextUnformatted("Select a homebrew ELF from LocalState/homebrew");
             ImGui::Separator();
 
             ImGui::BeginChild("elf_list", ImVec2(0, 250), true);
@@ -185,8 +191,8 @@ static std::string ShowBootWindow(SDL_Window* host_window, SDL_GLContext host_co
         }
         else if (menuState == BootMenuState::ERROR_NO_USB)
         {
-            ImGui::TextWrapped("Raw single ELF loading requires a USB drive in E:/ "
-                               "containing at least one .elf file.\n");
+            ImGui::TextWrapped("No ELF was found in LocalState/homebrew. "
+                               "Copy a legally obtained homebrew ELF to this folder and try again.\n");
             if (ImGui::Button("Back"))
             {
                 menuState = BootMenuState::MAIN;
@@ -216,57 +222,11 @@ static std::string ShowBootWindow(SDL_Window* host_window, SDL_GLContext host_co
     return chosenElf;
 }
 
-static void ShowCriticalAlertAndFreeze(const std::string& message) 
+// Do not enter an infinite SDL modal loop on emulation startup failure.
+// Return the error to external_main(), which can report it to the UWP host.
+static void ShowCriticalAlertAndFreeze(const std::string& message)
 {
-    SDL_Window* currentWindow  = SDL_GL_GetCurrentWindow();
-    SDL_GLContext currentContext = SDL_GL_GetCurrentContext();
-
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; 
-    io.IniFilename = NULL;
-
-    ImGui_ImplSDL2_InitForOpenGL(currentWindow, currentContext);
-    ImGui_ImplOpenGL3_Init("#version 410");
-
-    while (true) {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT) {
-                exit(0);
-            }
-        }
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        int w, h;
-        SDL_GetWindowSize(currentWindow, &w, &h);
-        ImGui::SetNextWindowPos(ImVec2(w * 0.5f, h * 0.5f),
-                                ImGuiCond_Always,
-                                ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_Always);
-
-        ImGui::Begin("Critical Error", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-        ImGui::TextWrapped("%s", message.c_str());
-        ImGui::Text("Application will now freeze.");
-        ImGui::End();
-
-        ImGui::Render();
-        SDL_GL_MakeCurrent(currentWindow, currentContext);
-        // viewport 
-        int drawableWidth, drawableHeight;
-        SDL_GL_GetDrawableSize(currentWindow, &drawableWidth, &drawableHeight);
-        glViewport(0, 0, drawableWidth, drawableHeight);
-        //
-        glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        SDL_GL_SwapWindow(currentWindow);
-        SDL_Delay(16);
-    }
+    throw std::runtime_error(message);
 }
 
 static void ShowAlertWithOK(const std::string& message)
@@ -363,9 +323,10 @@ static void PreBootChecks()
         if (ext == ".pic") picCount++;
     }
     if (prxCount == 0 || picCount == 0) {
-        ShowCriticalAlertAndFreeze(
-            "Mismatch in dev_flash/sys/external: Missing either .prx or .pic files.\n"
-        );
+        // Do not block homebrew boot: different titles require different
+        // external modules. Report missing modules when actually requested.
+        printf("PreBootChecks: warning: dev_flash/sys/external has %d PRX, %d PIC files\n",
+               prxCount, picCount);
     }
 
     std::filesystem::path gamesPath;
@@ -429,6 +390,10 @@ extern "C" EXPORT int external_main(SDL_Window* host_window, SDL_GLContext host_
     try {
         printf("ChonkyStation3 external_main: Started\n");
         
+        if (!host_window || !host_context) {
+            fprintf(stderr, "external_main: missing SDL UWP window or GL context\n");
+            return -1;
+        }
         // Make the GL context current on this thread.
         if (SDL_GL_MakeCurrent(host_window, host_context) != 0) {
             printf("external_main: SDL_GL_MakeCurrent failed: %s\n", SDL_GetError());
@@ -454,7 +419,7 @@ extern "C" EXPORT int external_main(SDL_Window* host_window, SDL_GLContext host_
             printf("external_main: No file provided, calling gameSelector\n");
         }
 
-        if (argc >= 3) {
+        if (argc >= 3 && argv && argv[2] && *argv[2]) {
             localStatePath = argv[2];
             printf("external_main: Local state path provided: %s\n", localStatePath.generic_string().c_str());
         
@@ -476,13 +441,32 @@ extern "C" EXPORT int external_main(SDL_Window* host_window, SDL_GLContext host_
         #endif
         
         } else {
-            printf("external_main: Local state path not provided as argument.\n");
+            // SDL2 on UWP resolves GetPrefPath to its writable application data
+            // location. Never silently mount E:/ as the emulated PS3 drive.
+            char* pref = SDL_GetPrefPath("PS3XboxOne", "ChonkyStation3");
+            if (pref != nullptr) {
+                localStatePath = std::filesystem::path(pref);
+                SDL_free(pref);
+            }
+#ifdef _WIN32
+            if (!localStatePath.empty() &&
+                _putenv_s("CHONKYSTATION3_LOCAL_STATE_PATH", localStatePath.string().c_str()) != 0)
+                throw std::runtime_error("Unable to configure UWP LocalState path");
+#else
+            if (!localStatePath.empty() &&
+                setenv("CHONKYSTATION3_LOCAL_STATE_PATH", localStatePath.string().c_str(), 1) != 0)
+                throw std::runtime_error("Unable to configure writable application path");
+#endif
         }
+        if (localStatePath.empty())
+            throw std::runtime_error("Writable application data path is unavailable; host must provide LocalState.");
+        std::filesystem::create_directories(localStatePath / "homebrew");
+
         std::string result = ShowBootWindow(host_window, host_context);
         file = result;
         PreBootChecks();
 
-        PlayStation3* ps3 = new PlayStation3(file);
+        auto ps3 = std::make_unique<PlayStation3>(file);
         if (file.empty()) {
             printf("external_main: Calling gameSelector()\n");
             ps3->gameSelector();
@@ -501,17 +485,18 @@ extern "C" EXPORT int external_main(SDL_Window* host_window, SDL_GLContext host_
         printf("external_main: GameWindow constructed\n");
 
         printf("external_main: Calling game_window.run()\n");
-        game_window.run(ps3);
+        game_window.run(ps3.get());
         printf("external_main: Finished run()\n");
 
-        return 0;
+        return ps3->stopped ? -2 : 0;
     } catch (const std::exception& e) {
         fprintf(stderr, "Exception caught in external_main: %s\n", e.what());
-        ShowCriticalAlertAndFreeze(std::string("Exception: ") + e.what());
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PS3 Xbox One boot error", e.what(), host_window);
         return -1;
     } catch (...) {
         fprintf(stderr, "Unknown exception caught in external_main.\n");
-        ShowCriticalAlertAndFreeze("Unknown exception caught.\n");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PS3 Xbox One boot error",
+                                 "Unexpected emulator exception", host_window);
         return -1;
     }
 }

@@ -5,8 +5,8 @@
 **Ground rule:** A rendered menu, an APPX package, a successful CI compile and a game successfully booting are four different milestones.
 
 ## T0 — Source and desktop baseline
-- [ ] Import the source from momo-AUX1/ChonkyStation3, retaining GPL-3.0 `LICENSE.md` and upstream commit history.
-- [ ] Record upstream SHA, CMake flags, dependencies and toolchain versions.
+- [x] Import the source from momo-AUX1/ChonkyStation3, retaining GPL-3.0 `LICENSE.md` and upstream commit history (merge commit `562494ed`, upstream commit `5093c7f`).
+- [x] Record upstream SHA (`5093c7f`, 2025-04-01) and existing CMake Xbox build flag (`ENABLE_XBOX_BUILD`). Toolchain/dependency versions still require build verification.
 - [ ] Validate recursive submodules and build host desktop target.
 - [ ] Run the frontend in a controlled desktop environment; record failures.
 

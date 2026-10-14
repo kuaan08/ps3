@@ -8,6 +8,7 @@
     <ProjectGuid>{4B7A768C-7B67-4ECF-98CA-817C79584225}</ProjectGuid>
     <RootNamespace>XboxOneProbe</RootNamespace>
     <Keyword>AppContainerProj</Keyword>
+    <AppContainerApplication>true</AppContainerApplication>
     <ApplicationType>Windows Store</ApplicationType>
     <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
     <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>

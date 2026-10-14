@@ -92,11 +92,15 @@ void GameWindow::run(PlayStation3* ps3) {
     ps3->rsx.initGL();
     
     printf("GameWindow::run: Entering main loop.\n");
-    while (!quit) {
-        printf("GameWindow::run: Loop iteration\n");
+    while (!quit && !ps3->stopped) {
         ps3->run();
+        // The interpreter runs in short slices; pump without consuming
+        // controller events which flipHandler() processes during RSX flips.
+        SDL_PumpEvents();
+        if (SDL_HasEvent(SDL_QUIT))
+            quit = true;
     }
-    printf("GameWindow::run: Exiting main loop.\n");
+    printf("GameWindow::run: Exiting main loop (halted=%d).\n", ps3->stopped);
     // Do not delete the window or context here since the host owns them.
 }
 

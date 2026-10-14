@@ -359,6 +359,12 @@ GLuint RSX::getBlendFactor(u16 fact) {
 }
 
 void RSX::runCommandList(u64 put_addr) {
+#ifdef CHONKYSTATION3_UWP_D3D11
+    if (d3d11_active) {
+        runCommandListD3D11(put_addr);
+        return;
+    }
+#endif
     log("Executing commands\n");
     log("get: 0x%08x, put: 0x%08x\n", (u32)gcm.ctrl->get, (u32)gcm.ctrl->put);
 
